@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snack and Pay</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍫</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  /* ============ SETTINGS: paste your Apps Script web app URL in the script below ============ */
+  :root {
+    --bg: #E8EEF6;
+    --paper: #FFFFFF;
+    --ink: #1C2333;
+    --muted: #5A6478;
+    --line: #CBD4E1;
+    --accent: #FFC233;
+    --accent-ink: #1C2333;
+    --good: #1C7C53;
+    --bad: #B3261E;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121826;
+      --paper: #1E2738;
+      --ink: #EDF1F7;
+      --muted: #9CA8BC;
+      --line: #34425C;
+      --accent: #FFC233;
+      --accent-ink: #1C2333;
+      --good: #5FD39C;
+      --bad: #FF8A80;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 17px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 34rem; margin: 0 auto; padding: 1.25rem 1rem 8rem; }
+  h1 { font-size: 2.6rem; line-height: 0.95; font-weight: 800; letter-spacing: -0.03em; margin: 0.5rem 0 1.5rem; }
+  h1 span { display: block; }
+  h2 { font-size: 1.3rem; font-weight: 600; margin: 2rem 0 0.75rem; }
+  p { margin: 0 0 1rem; }
+  .muted { color: var(--muted); }
+  [hidden] { display: none !important; }
+
+  label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
+  select, input {
+    width: 100%; font: inherit; color: var(--ink); background: var(--paper);
+    border: 2px solid var(--line); border-radius: 12px; padding: 0.8rem 0.9rem;
+  }
+  select:focus-visible, input:focus-visible, button:focus-visible, a:focus-visible {
+    outline: 3px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* Snack list */
+  .snacks { list-style: none; margin: 0; padding: 0; background: var(--paper); border-radius: 16px; overflow: hidden; }
+  .snack {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem 0.9rem;
+    border-top: 1px solid var(--line); transition: background-color 0.15s;
+  }
+  .snack:first-child { border-top: 0; }
+  .snack.picked { background: color-mix(in srgb, var(--accent) 22%, var(--paper)); }
+  .snack-info { flex: 1; min-width: 0; }
+  .snack-name { font-weight: 600; }
+  .snack-price { color: var(--muted); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+  .stepper { display: flex; align-items: center; gap: 0.35rem; }
+  .stepper button {
+    width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--line);
+    background: transparent; color: var(--ink); font: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer;
+  }
+  .stepper button:disabled { opacity: 0.35; cursor: default; }
+  .stepper .plus { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .qty { min-width: 2ch; text-align: center; font-weight: 800; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+
+  /* Bottom bar */
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .bar .btn { max-width: 34rem; margin: 0 auto; display: block; }
+  .btn {
+    width: 100%; font: inherit; font-weight: 800; font-size: 1.1rem; padding: 1rem;
+    border: 0; border-radius: 14px; background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  }
+  .btn:disabled { background: var(--line); color: var(--muted); cursor: default; }
+  .btn.secondary { background: transparent; border: 2px solid var(--line); color: var(--ink); font-weight: 600; font-size: 1rem; padding: 0.7rem; }
+
+  /* The receipt: the one memorable thing */
+  .receipt {
+    position: relative; background: var(--paper); padding: 1.4rem 1.25rem 1.6rem;
+    border-radius: 4px 4px 0 0; margin: 2rem 0 1.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .receipt::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -10px; height: 10px;
+    background:
+      linear-gradient(135deg, var(--paper) 50%, transparent 50%) 0 0 / 20px 20px repeat-x,
+      linear-gradient(-135deg, var(--paper) 50%, transparent 50%) 0 0 / 20px 20px repeat-x;
+  }
+  .receipt h2 { margin: 0 0 1rem; font-size: 1.1rem; }
+  .line { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0; }
+  .line .amt { white-space: nowrap; }
+  .line.sub { color: var(--muted); }
+  .line.credit .amt { color: var(--good); }
+  .dash { border: 0; border-top: 2px dashed var(--line); margin: 0.8rem 0; }
+  .total-label { font-weight: 600; margin-top: 0.3rem; }
+  .total { font-size: 3.2rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
+  .total.zero { color: var(--good); }
+  .receipt .note { color: var(--muted); font-size: 0.92rem; margin: 0.6rem 0 0; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0.35rem; background: var(--paper); padding: 0.3rem; border-radius: 14px; margin: 1.5rem 0 0; }
+  .tab {
+    flex: 1; text-align: center; padding: 0.7rem 0.5rem; border-radius: 10px; font-weight: 600;
+    color: var(--muted); text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.45rem;
+  }
+  .tab svg { width: 22px; height: 22px; flex: none; }
+  .tab[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
+
+  /* Coffee mode: warm latte colors and its own background art */
+  body[data-mode="coffee"] { --bg: #F1E6DA; --accent: #9C5F2A; --accent-ink: #FFFFFF; }
+  @media (prefers-color-scheme: dark) {
+    body[data-mode="coffee"] { --bg: #1A1511; --paper: #2A221C; --line: #4A3C31; --accent: #D9A066; --accent-ink: #1A1511; }
+  }
+  .bg-art.coffee { display: none; }
+  body[data-mode="coffee"] .bg-art.snacks { display: none; }
+  body[data-mode="coffee"] .bg-art.coffee { display: block; }
+
+  .coffee-card { background: var(--paper); border-radius: 16px; padding: 1.25rem 1rem 1.5rem; text-align: center; }
+  .coffee-cup { width: 150px; height: 150px; display: block; margin: 0 auto 0.5rem; }
+  .coffee-price { color: var(--muted); margin: 0 0 1rem; font-variant-numeric: tabular-nums; }
+  .coffee-stepper { justify-content: center; gap: 1.25rem; }
+  .coffee-stepper button { width: 60px; height: 60px; font-size: 1.8rem; }
+  .coffee-stepper .qty { font-size: 2.6rem; min-width: 3ch; }
+  .steam { animation: steam 3s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom; }
+  .steam:nth-of-type(2) { animation-delay: 1s; }
+  .steam:nth-of-type(3) { animation-delay: 2s; }
+  @keyframes steam {
+    0% { opacity: 0; transform: translateY(6px); }
+    40% { opacity: 0.8; }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+  @media (prefers-reduced-motion: reduce) { .steam { animation: none; opacity: 0.6; } }
+
+  /* Fix a mistake */
+  .fix { background: var(--paper); border-radius: 14px; padding: 0.9rem 1rem; margin: 0 0 1.5rem; }
+  .fix summary { font-weight: 600; cursor: pointer; padding: 0.2rem 0; }
+  .fix p { margin: 0.6rem 0 0.4rem; font-size: 0.95rem; }
+  .fix-list { list-style: none; margin: 0; padding: 0; }
+  .fix-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .fix-item:first-child { border-top: 0; }
+  .fix-text { flex: 1; min-width: 0; }
+  .fix-when { display: block; color: var(--muted); font-size: 0.88rem; }
+  .fix-item button {
+    font: inherit; font-size: 0.95rem; font-weight: 600; color: var(--bad); background: transparent;
+    border: 2px solid var(--line); border-radius: 10px; padding: 0.45rem 0.8rem; cursor: pointer;
+  }
+  .fix-item button:disabled { opacity: 0.5; cursor: default; }
+
+  /* Admin */
+  .people { list-style: none; padding: 0; margin: 0; }
+  .person { background: var(--paper); border-radius: 14px; padding: 1rem; margin-bottom: 0.75rem; }
+  .person-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+  .person-name { font-weight: 600; font-size: 1.1rem; }
+  .person-owed { font-weight: 800; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+  .person-owed.zero { color: var(--good); }
+  .person-detail { color: var(--muted); font-size: 0.92rem; margin: 0.2rem 0 0.75rem; font-variant-numeric: tabular-nums; }
+  .person-actions { display: flex; gap: 0.5rem; }
+  .person-actions .btn { font-size: 0.95rem; padding: 0.65rem; }
+  .outstanding { font-size: 1.05rem; margin-bottom: 1rem; }
+
+  footer { text-align: center; margin-top: 2.5rem; font-size: 0.9rem; }
+  footer a, .link { color: var(--muted); }
+  .error { color: var(--bad); font-weight: 600; }
+
+  .toast {
+    position: fixed; left: 50%; top: calc(1rem + env(safe-area-inset-top, 0px));
+    transform: translate(-50%, -150%); background: var(--ink); color: var(--paper);
+    padding: 0.7rem 1.1rem; border-radius: 999px; font-weight: 600; transition: transform 0.25s ease;
+    z-index: 20; max-width: calc(100% - 2rem); text-align: center;
+  }
+  .toast.show { transform: translate(-50%, 0); }
+  @media (prefers-reduced-motion: reduce) { .toast, .snack { transition: none; } }
+
+  /* Background art: a tiled pattern of snacks and candies */
+  :root {
+    --art-pink: #FF8FB1; --art-mint: #5CCFB4; --art-yellow: #FFC233; --art-blue: #7EA6FF;
+    --art-choc: #8A5A3B; --art-cookie: #E3A85C; --art-orange: #FF9B57; --art-white: #FFFFFF;
+    --art-opacity: 0.32;
+  }
+  @media (prefers-color-scheme: dark) { :root { --art-opacity: 0.18; } }
+  .bg-art { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: var(--art-opacity); }
+  .bg-art svg { display: block; width: 100%; height: 100%; }
+  main { position: relative; z-index: 1; }
+  .bar { z-index: 5; }
+</style>
+</head>
+<body>
+<div class="bg-art snacks" aria-hidden="true">
+  <svg xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Wrapped candy -->
+      <g id="art-candy">
+        <path d="M-32-14 L-15 0 L-32 14 Z" fill="var(--art-pink)"/>
+        <path d="M32-14 L15 0 L32 14 Z" fill="var(--art-pink)"/>
+        <ellipse rx="18" ry="13" fill="var(--art-pink)"/>
+        <path d="M-6-11 Q2 0 -6 11 M5-11 Q13 0 5 11" stroke="var(--art-white)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+      </g>
+      <!-- Lollipop -->
+      <g id="art-lolly">
+        <line x1="0" y1="14" x2="0" y2="52" stroke="var(--art-cookie)" stroke-width="4" stroke-linecap="round"/>
+        <circle r="20" fill="var(--art-mint)"/>
+        <path d="M0 0 a3 3 0 0 1 6 0 a7 7 0 0 1 -14 0 a11 11 0 0 1 22 0 a15 15 0 0 1 -30 0" stroke="var(--art-white)" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.8"/>
+      </g>
+      <!-- Donut -->
+      <g id="art-donut">
+        <path fill-rule="evenodd" fill="var(--art-cookie)" d="M-23 0a23 23 0 1 0 46 0a23 23 0 1 0 -46 0Z M-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0Z"/>
+        <path fill-rule="evenodd" fill="var(--art-pink)" d="M-19 1c0-12 8-19 19-19s19 7 19 18c-3 4-1 9-6 12c-5 3-8 0-13 4c-6 3-10-1-14-4c-4-3-5-7-5-11Z M-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0Z"/>
+        <g stroke-width="3" stroke-linecap="round">
+          <line x1="-12" y1="-9" x2="-8" y2="-12" stroke="var(--art-yellow)"/>
+          <line x1="6" y1="-14" x2="10" y2="-11" stroke="var(--art-blue)"/>
+          <line x1="13" y1="1" x2="14" y2="6" stroke="var(--art-mint)"/>
+          <line x1="-15" y1="4" x2="-12" y2="8" stroke="var(--art-white)"/>
+          <line x1="-1" y1="-15" x2="3" y2="-16" stroke="var(--art-mint)"/>
+        </g>
+      </g>
+      <!-- Chocolate bar, half unwrapped -->
+      <g id="art-choc">
+        <rect x="-16" y="-28" width="32" height="40" rx="3" fill="var(--art-choc)"/>
+        <path d="M-16-15 H16 M-16-2 H16 M0-28 V12" stroke="var(--art-white)" stroke-width="1.5" opacity="0.35"/>
+        <path d="M-18 2 L-12 -2 L-6 2 L0 -2 L6 2 L12 -2 L18 2 V28 H-18 Z" fill="var(--art-blue)"/>
+        <rect x="-18" y="12" width="36" height="5" fill="var(--art-white)" opacity="0.5"/>
+      </g>
+      <!-- Cookie -->
+      <g id="art-cookie">
+        <circle r="21" fill="var(--art-cookie)"/>
+        <g fill="var(--art-choc)">
+          <circle cx="-8" cy="-7" r="3.2"/><circle cx="7" cy="-10" r="2.6"/><circle cx="10" cy="5" r="3.4"/>
+          <circle cx="-4" cy="9" r="2.8"/><circle cx="-13" cy="4" r="2.2"/><circle cx="2" cy="-1" r="2"/>
+        </g>
+      </g>
+      <!-- Gummy bear -->
+      <g id="art-bear" fill="var(--art-orange)">
+        <circle cx="-7" cy="-22" r="4.5"/><circle cx="7" cy="-22" r="4.5"/>
+        <circle cx="0" cy="-14" r="10"/>
+        <ellipse cx="0" cy="6" rx="12" ry="15"/>
+        <circle cx="-12" cy="0" r="5"/><circle cx="12" cy="0" r="5"/>
+        <circle cx="-7" cy="20" r="6"/><circle cx="7" cy="20" r="6"/>
+        <ellipse cx="-3" cy="2" rx="3" ry="6" fill="var(--art-white)" opacity="0.45"/>
+      </g>
+      <!-- Bag of chips -->
+      <g id="art-chips">
+        <path d="M-20-28 H20 L18-20 Q25 0 18 26 L20 30 H-20 L-18 26 Q-25 0 -18-20 Z" fill="var(--art-yellow)"/>
+        <path d="M-18-24 H18 M-18 26 H18" stroke="var(--art-orange)" stroke-width="2" stroke-dasharray="3 3"/>
+        <circle cy="1" r="9" fill="var(--art-orange)"/>
+        <path d="M-5 3 Q0-6 5 3" stroke="var(--art-white)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </g>
+      <!-- Soda can -->
+      <g id="art-can">
+        <rect x="-14" y="-25" width="28" height="50" rx="6" fill="var(--art-blue)"/>
+        <ellipse cy="-23" rx="11" ry="3" fill="var(--art-white)" opacity="0.6"/>
+        <path d="M-14 -2 Q0 -10 14 -2 V6 Q0 -2 -14 6 Z" fill="var(--art-white)" opacity="0.8"/>
+      </g>
+      <!-- Candy cane -->
+      <g id="art-cane">
+        <path d="M6 30 V-12 a10 10 0 0 0 -20 0" stroke="var(--art-white)" stroke-width="8" fill="none" stroke-linecap="round"/>
+        <path d="M6 30 V-12 a10 10 0 0 0 -20 0" stroke="var(--art-pink)" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="6 6"/>
+      </g>
+
+      <pattern id="snack-pattern" width="420" height="420" patternUnits="userSpaceOnUse">
+        <use href="#art-candy"  transform="translate(70 62) rotate(-22)"/>
+        <use href="#art-lolly"  transform="translate(215 45) rotate(16)"/>
+        <use href="#art-donut"  transform="translate(345 105)"/>
+        <use href="#art-chips"  transform="translate(105 190) rotate(-12)"/>
+        <use href="#art-bear"   transform="translate(255 185) rotate(14)"/>
+        <use href="#art-choc"   transform="translate(360 280) rotate(22)"/>
+        <use href="#art-cookie" transform="translate(60 330)"/>
+        <use href="#art-can"    transform="translate(200 320) rotate(-16)"/>
+        <use href="#art-cane"   transform="translate(300 370) rotate(28) scale(0.8)"/>
+        <g fill="var(--art-yellow)">
+          <circle cx="150" cy="105" r="3"/><circle cx="300" cy="235" r="2.5"/><circle cx="25" cy="250" r="3"/>
+          <circle cx="395" cy="20" r="2.5"/><circle cx="130" cy="395" r="3"/>
+        </g>
+        <g fill="var(--art-mint)">
+          <circle cx="180" cy="250" r="2.5"/><circle cx="35" cy="140" r="3"/><circle cx="395" cy="190" r="2.5"/>
+        </g>
+      </pattern>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#snack-pattern)"/>
+  </svg>
+</div>
+<div class="bg-art coffee" aria-hidden="true">
+  <svg xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Cup on saucer with latte heart -->
+      <g id="cf-cup">
+        <ellipse cy="20" rx="30" ry="7" fill="#C98B4E"/>
+        <path d="M-22-12 H22 L18 14 Q0 22 -18 14 Z" fill="#FFFFFF"/>
+        <path d="M22-6 a9 8 0 1 1 -2 14" stroke="#FFFFFF" stroke-width="5" fill="none"/>
+        <ellipse cy="-12" rx="22" ry="5" fill="#6F4E37"/>
+        <path d="M0-9 c-6-4 -6-8 -2-8 c1 0 2 1 2 2 c0-1 1-2 2-2 c4 0 4 4 -2 8Z" fill="#E8D3B9"/>
+      </g>
+      <!-- Coffee bean -->
+      <g id="cf-bean">
+        <ellipse rx="9" ry="13" fill="#6F4E37"/>
+        <path d="M0-12 C-5-4 5 4 0 12" stroke="#E8D3B9" stroke-width="2" fill="none" stroke-linecap="round"/>
+      </g>
+      <!-- Moka pot -->
+      <g id="cf-moka">
+        <path d="M-14-30 H14 L18-6 H-18 Z" fill="#9AA6B2"/>
+        <path d="M-18-6 H18 L13 2 L18 26 H-18 L-13 2 Z" fill="#B7C1CB"/>
+        <rect x="-4" y="-36" width="8" height="6" rx="2" fill="#3B2A20"/>
+        <path d="M18-24 q12 4 6 18" stroke="#3B2A20" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M-14-30 L-22-26" stroke="#9AA6B2" stroke-width="4" stroke-linecap="round"/>
+      </g>
+      <!-- Takeaway cup -->
+      <g id="cf-togo">
+        <path d="M-15-22 H15 L11 28 H-11 Z" fill="#E8D3B9"/>
+        <rect x="-18" y="-30" width="36" height="8" rx="3" fill="#6F4E37"/>
+        <path d="M-13.5-4 H13.5 L12 12 H-12 Z" fill="#C98B4E"/>
+      </g>
+      <!-- Croissant -->
+      <g id="cf-croissant" fill="#E0A65A">
+        <ellipse rx="10" ry="13"/>
+        <ellipse cx="-14" cy="3" rx="8" ry="10" transform="rotate(-25 -14 3)"/>
+        <ellipse cx="14" cy="3" rx="8" ry="10" transform="rotate(25 14 3)"/>
+        <ellipse cx="-25" cy="9" rx="5" ry="7" transform="rotate(-45 -25 9)"/>
+        <ellipse cx="25" cy="9" rx="5" ry="7" transform="rotate(45 25 9)"/>
+        <path d="M-4-10 v20 M4-10 v20" stroke="#C98B4E" stroke-width="1.5"/>
+      </g>
+      <!-- Steam swirl -->
+      <path id="cf-steam" d="M0 20 C-10 10 10 0 0-10 C-8-18 6-24 0-30" stroke="#C98B4E" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+      <pattern id="coffee-pattern" width="400" height="400" patternUnits="userSpaceOnUse">
+        <use href="#cf-cup"       transform="translate(80 70) rotate(-8)"/>
+        <use href="#cf-bean"      transform="translate(210 50) rotate(30)"/>
+        <use href="#cf-bean"      transform="translate(235 75) rotate(-20) scale(0.8)"/>
+        <use href="#cf-moka"      transform="translate(330 110) rotate(10)"/>
+        <use href="#cf-togo"      transform="translate(120 200) rotate(14)"/>
+        <use href="#cf-steam"     transform="translate(240 200)"/>
+        <use href="#cf-croissant" transform="translate(330 290) rotate(-12)"/>
+        <use href="#cf-cup"       transform="translate(200 330) rotate(10) scale(0.85)"/>
+        <use href="#cf-bean"      transform="translate(55 320) rotate(-35)"/>
+        <use href="#cf-bean"      transform="translate(80 345) rotate(15) scale(0.75)"/>
+        <use href="#cf-steam"     transform="translate(40 200) rotate(10) scale(0.8)"/>
+        <g fill="#C98B4E">
+          <circle cx="160" cy="120" r="3"/><circle cx="290" cy="220" r="2.5"/><circle cx="380" cy="30" r="2.5"/><circle cx="270" cy="385" r="3"/>
+        </g>
+      </pattern>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#coffee-pattern)"/>
+  </svg>
+</div>
+<main>
+  <h1><span>Snack</span><span>and Pay</span></h1>
+
+  <section id="view-loading"><p class="muted">Loading snacks…</p></section>
+  <section id="view-error" hidden><p class="error" id="error-text"></p><button class="btn secondary" id="retry">Try again</button></section>
+
+  <!-- Main flow -->
+  <section id="view-main" hidden>
+    <label for="who">Your name</label>
+    <select id="who"><option value="">Choose your name</option></select>
+
+    <div id="snack-area" hidden>
+      <nav class="tabs" aria-label="What are you adding?">
+        <a class="tab" id="tab-snacks" href="#snacks">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9 L7 12 L3 15 Z M21 9 L17 12 L21 15 Z" fill="currentColor"/><ellipse cx="12" cy="12" rx="6" ry="4.5" fill="currentColor"/></svg>
+          Snacks
+        </a>
+        <a class="tab" id="tab-coffee" href="#coffee">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9 H16 L15 18 Q10 21 5 18 Z" fill="currentColor"/><path d="M16 11 a3 3 0 1 1 -1 6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M8 3 c-1 2 1 3 0 5 M12 3 c-1 2 1 3 0 5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+          Coffee
+        </a>
+      </nav>
+
+      <div id="panel-snacks">
+        <h2>What did you take?</h2>
+        <ul class="snacks" id="snacks"></ul>
+      </div>
+
+      <div id="panel-coffee" hidden>
+        <h2>How many coffees?</h2>
+        <div class="coffee-card">
+          <svg class="coffee-cup" viewBox="0 0 160 160" aria-hidden="true">
+            <path class="steam" d="M62 52 c-8-10 8-16 0-28" stroke="#C98B4E" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path class="steam" d="M80 50 c-8-10 8-16 0-30" stroke="#C98B4E" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path class="steam" d="M98 52 c-8-10 8-16 0-28" stroke="#C98B4E" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <ellipse cx="80" cy="132" rx="62" ry="12" fill="#C98B4E"/>
+            <ellipse cx="80" cy="129" rx="40" ry="6" fill="#A86F3A"/>
+            <path d="M112 78 a17 15 0 1 1 -4 30" stroke="#E8D3B9" stroke-width="9" fill="none"/>
+            <path d="M34 66 H126 L118 116 Q80 134 42 116 Z" fill="#F7EFE6" stroke="#E8D3B9" stroke-width="2"/>
+            <ellipse cx="80" cy="66" rx="46" ry="10" fill="#6F4E37"/>
+            <path d="M80 72 c-12-7 -12-14 -4-14 c2 0 4 2 4 4 c0-2 2-4 4-4 c8 0 8 7 -4 14Z" fill="#E8D3B9"/>
+          </svg>
+          <p class="coffee-price" id="coffee-price"></p>
+          <div class="stepper coffee-stepper">
+            <button type="button" class="minus" id="coffee-minus" aria-label="One coffee less" disabled>−</button>
+            <span class="qty" id="coffee-qty" aria-live="polite">0</span>
+            <button type="button" class="plus" id="coffee-plus" aria-label="One coffee more">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="receipt" id="receipt" hidden aria-live="polite"></div>
+    <details class="fix" id="fix" hidden>
+      <summary>Fix a mistake</summary>
+      <p class="muted">Remove anything you added by mistake this month, then add the right ones.</p>
+      <ul class="fix-list" id="fix-list"></ul>
+    </details>
+    <footer><a href="#admin">Admin</a></footer>
+  </section>
+
+  <!-- Admin -->
+  <section id="view-admin" hidden>
+    <p><a class="link" href="#">Back to snacks</a></p>
+    <form id="pin-form">
+      <label for="pin">Admin PIN</label>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off" required>
+      <p></p>
+      <button class="btn" type="submit">Open admin</button>
+      <p class="error" id="pin-error" hidden></p>
+    </form>
+    <div id="admin-area" hidden>
+      <h2>Tabs this month</h2>
+      <p class="outstanding" id="outstanding"></p>
+      <ul class="people" id="people"></ul>
+      <p class="muted">Unpaid amounts move to next month automatically. People can remove their own entries from this month; for older ones, delete the row in the Entries sheet.</p>
+    </div>
+  </section>
+</main>
+
+<div class="bar" id="bar" hidden><button class="btn" id="add" disabled>Pick a snack</button></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============ SETTINGS ============ */
+const API_URL = 'https://script.google.com/macros/s/AKfycbyQmDqyKu_7syV5vAHlWPnougMFlv4qmjkzMrL7_QBWIMBKh5NqPWJWxgrJCojovKXV/exec';
+/* ================================== */
+
+const $ = id => document.getElementById(id);
+const state = { snacks: [], people: [], currency: 'EUR', qty: {}, name: '', pin: '', mode: 'snacks', coffeeQty: 0, coffeePrice: 0 };
+let money = n => n.toFixed(2);
+
+function store(key, val) { try { val === null ? localStorage.removeItem(key) : localStorage.setItem(key, val); } catch (e) {} }
+function recall(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+
+async function api(payload) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('The server answered with error ' + res.status + '.');
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'The request failed.');
+  return data;
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function monthName(key) {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function showView(name) {
+  ['loading', 'error', 'main', 'admin'].forEach(v => { $('view-' + v).hidden = v !== name; });
+  $('bar').hidden = !(name === 'main' && state.name);
+  if (name !== 'main') document.body.dataset.mode = 'snacks';
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  document.body.dataset.mode = mode;
+  $('panel-snacks').hidden = mode !== 'snacks';
+  $('panel-coffee').hidden = mode !== 'coffee';
+  ['snacks', 'coffee'].forEach(m => {
+    if (m === mode) $('tab-' + m).setAttribute('aria-current', 'page');
+    else $('tab-' + m).removeAttribute('aria-current');
+  });
+  updateBar();
+}
+
+function renderCoffee() {
+  $('coffee-qty').textContent = String(state.coffeeQty);
+  $('coffee-minus').disabled = state.coffeeQty === 0;
+  $('coffee-price').textContent = money(state.coffeePrice) + ' per coffee';
+  updateBar();
+}
+
+function showError(msg) { $('error-text').textContent = msg; showView('error'); }
+
+/* ---------- Main flow ---------- */
+
+function renderPeople() {
+  const sel = $('who');
+  sel.length = 1;
+  state.people.forEach(p => sel.add(new Option(p, p)));
+  const saved = recall('snack-name');
+  if (saved && state.people.includes(saved)) sel.value = saved;
+}
+
+function renderSnacks() {
+  const list = $('snacks');
+  list.replaceChildren();
+  state.snacks.forEach((s, i) => {
+    const q = state.qty[s.name] || 0;
+    const li = el('li', 'snack' + (q ? ' picked' : ''));
+    const info = el('div', 'snack-info');
+    info.append(el('div', 'snack-name', s.name), el('div', 'snack-price', money(s.price)));
+    const step = el('div', 'stepper');
+    const minus = el('button', 'minus', '−');
+    minus.type = 'button'; minus.dataset.i = i; minus.dataset.d = -1; minus.disabled = !q;
+    minus.setAttribute('aria-label', 'One less ' + s.name);
+    const plus = el('button', 'plus', '+');
+    plus.type = 'button'; plus.dataset.i = i; plus.dataset.d = 1;
+    plus.setAttribute('aria-label', 'One more ' + s.name);
+    const qty = el('span', 'qty', String(q));
+    qty.setAttribute('aria-label', q + ' ' + s.name);
+    step.append(minus, qty, plus);
+    li.append(info, step);
+    list.append(li);
+  });
+  updateBar();
+}
+
+function updateBar() {
+  const btn = $('add');
+  if (state.mode === 'coffee') {
+    const n = state.coffeeQty;
+    btn.disabled = n === 0;
+    btn.textContent = n === 0 ? 'Choose how many coffees'
+      : 'Add ' + n + (n === 1 ? ' coffee' : ' coffees') + ' to my tab (' + money(n * state.coffeePrice) + ')';
+    return;
+  }
+  let count = 0, sum = 0;
+  state.snacks.forEach(s => { const q = state.qty[s.name] || 0; count += q; sum += q * s.price; });
+  btn.disabled = count === 0;
+  btn.textContent = count === 0 ? 'Pick a snack'
+    : 'Add ' + count + (count === 1 ? ' snack' : ' snacks') + ' to my tab (' + money(sum) + ')';
+}
+
+function renderReceipt(s) {
+  const r = $('receipt');
+  r.replaceChildren();
+  r.append(el('h2', '', s.name + '’s tab for ' + monthName(s.month)));
+
+  const line = (label, amount, cls) => {
+    const d = el('div', 'line' + (cls ? ' ' + cls : ''));
+    d.append(el('span', '', label), el('span', 'amt', amount));
+    r.append(d);
+  };
+
+  if (s.carried > 0) line('Unpaid from earlier months', money(s.carried));
+  if (s.carried < 0) line('Credit from earlier months', '−' + money(-s.carried), 'credit');
+
+  if (s.items.length) {
+    s.items.forEach(i => line(i.qty + ' × ' + i.snack, money(i.amount), 'sub'));
+  } else {
+    line('No snacks yet this month', money(0), 'sub');
+  }
+  if (s.paidThisMonth > 0) line('Paid this month', '−' + money(s.paidThisMonth), 'credit');
+
+  r.append(el('hr', 'dash'));
+  r.append(el('div', 'total-label', s.owed < 0 ? 'Your credit' : 'Total to pay'));
+  r.append(el('div', 'total' + (s.owed <= 0 ? ' zero' : ''), money(Math.abs(s.owed))));
+  if (s.owed > 0) r.append(el('p', 'note', 'Unpaid amounts carry over to next month.'));
+  r.hidden = false;
+  renderFixList(s.entries || []);
+}
+
+function renderFixList(entries) {
+  const list = $('fix-list');
+  list.replaceChildren();
+  $('fix').hidden = entries.length === 0;
+  entries.forEach(e => {
+    const when = new Date(e.time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const label = e.qty + ' × ' + e.snack;
+    const li = el('li', 'fix-item');
+    const text = el('span', 'fix-text', label + ' (' + money(e.amount) + ')');
+    text.append(el('span', 'fix-when', when));
+    const btn = el('button', '', 'Remove');
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Remove ' + label + ' from ' + when);
+    btn.addEventListener('click', async () => {
+      if (!confirm('Remove ' + label + ' (' + money(e.amount) + ') added on ' + when + '?')) return;
+      btn.disabled = true;
+      try {
+        const data = await api({ action: 'remove', name: state.name, id: e.id });
+        renderReceipt(data.summary);
+        $('fix').open = true;
+        toast('Removed ' + label);
+      } catch (err) {
+        toast(err.message);
+        btn.disabled = false;
+      }
+    });
+    li.append(text, btn);
+    list.append(li);
+  });
+}
+
+async function loadSummary() {
+  try {
+    const data = await api({ action: 'summary', name: state.name });
+    renderReceipt(data.summary);
+  } catch (e) { toast(e.message); }
+}
+
+function chooseName(name) {
+  state.name = name;
+  store('snack-name', name || null);
+  $('snack-area').hidden = !name;
+  $('bar').hidden = !name;
+  $('receipt').hidden = true;
+  $('fix').hidden = true;
+  if (name) { renderSnacks(); renderCoffee(); loadSummary(); }
+}
+
+$('coffee-plus').addEventListener('click', () => { state.coffeeQty = Math.min(50, state.coffeeQty + 1); renderCoffee(); });
+$('coffee-minus').addEventListener('click', () => { state.coffeeQty = Math.max(0, state.coffeeQty - 1); renderCoffee(); });
+
+$('who').addEventListener('change', e => chooseName(e.target.value));
+
+$('snacks').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const s = state.snacks[Number(b.dataset.i)];
+  const next = Math.max(0, Math.min(50, (state.qty[s.name] || 0) + Number(b.dataset.d)));
+  state.qty[s.name] = next;
+  renderSnacks();
+});
+
+$('add').addEventListener('click', async () => {
+  const coffee = state.mode === 'coffee';
+  const items = coffee
+    ? (state.coffeeQty > 0 ? [{ type: 'coffee', qty: state.coffeeQty }] : [])
+    : Object.entries(state.qty).filter(([, q]) => q > 0).map(([snack, qty]) => ({ snack, qty }));
+  if (!items.length) return;
+  const btn = $('add');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    const data = await api({ action: 'add', name: state.name, items });
+    if (coffee) { state.coffeeQty = 0; renderCoffee(); }
+    else { state.qty = {}; renderSnacks(); }
+    renderReceipt(data.summary);
+    toast('Added to your tab');
+    $('receipt').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  } catch (e) {
+    toast(e.message);
+    updateBar();
+  }
+});
+
+/* ---------- Admin ---------- */
+
+function renderPeopleAdmin(people) {
+  const list = $('people');
+  list.replaceChildren();
+  let outstanding = 0;
+  people.forEach(p => {
+    if (p.owed > 0) outstanding += p.owed;
+    const li = el('li', 'person');
+    const head = el('div', 'person-head');
+    head.append(el('span', 'person-name', p.name), el('span', 'person-owed' + (p.owed <= 0 ? ' zero' : ''),
+      p.owed < 0 ? '−' + money(-p.owed) : money(p.owed)));
+    const parts = [];
+    if (p.carried) parts.push(money(p.carried) + ' from earlier months');
+    parts.push(money(p.monthTotal) + ' this month');
+    if (p.paidThisMonth) parts.push(money(p.paidThisMonth) + ' paid');
+    li.append(head, el('p', 'person-detail', parts.join(', ')));
+
+    if (p.owed > 0) {
+      const actions = el('div', 'person-actions');
+      const full = el('button', 'btn', 'Mark as paid');
+      full.type = 'button';
+      full.addEventListener('click', () => {
+        if (confirm('Record a payment of ' + money(p.owed) + ' from ' + p.name + '? Their tab goes to ' + money(0) + '.')) {
+          pay(p.name, p.owed, 'Paid in full');
+        }
+      });
+      const part = el('button', 'btn secondary', 'Part payment');
+      part.type = 'button';
+      part.addEventListener('click', () => {
+        const raw = prompt('How much did ' + p.name + ' pay?', '');
+        if (raw === null) return;
+        const amount = Number(String(raw).replace(',', '.'));
+        if (!(amount > 0)) { toast('Enter an amount greater than 0'); return; }
+        pay(p.name, amount, 'Part payment');
+      });
+      actions.append(full, part);
+      li.append(actions);
+    }
+    list.append(li);
+  });
+  $('outstanding').textContent = 'Still to collect: ' + money(outstanding);
+  $('admin-area').hidden = false;
+  $('pin-form').hidden = true;
+}
+
+async function openAdmin(pin) {
+  $('pin-error').hidden = true;
+  try {
+    const data = await api({ action: 'admin', pin });
+    state.pin = pin;
+    try { sessionStorage.setItem('snack-pin', pin); } catch (e) {}
+    renderPeopleAdmin(data.people);
+  } catch (e) {
+    $('pin-error').textContent = e.message;
+    $('pin-error').hidden = false;
+    $('pin-form').hidden = false;
+    $('admin-area').hidden = true;
+  }
+}
+
+async function pay(name, amount, note) {
+  try {
+    const data = await api({ action: 'pay', pin: state.pin, name, amount, note });
+    renderPeopleAdmin(data.people);
+    toast('Payment recorded for ' + name);
+  } catch (e) { toast(e.message); }
+}
+
+$('pin-form').addEventListener('submit', e => { e.preventDefault(); openAdmin($('pin').value); });
+
+/* ---------- Routing and start ---------- */
+
+let lastView = '';
+function route() {
+  if (location.hash === '#admin') {
+    lastView = 'admin';
+    showView('admin');
+    let saved = '';
+    try { saved = sessionStorage.getItem('snack-pin') || ''; } catch (e) {}
+    if (saved) openAdmin(saved);
+  } else {
+    const firstTime = lastView !== 'main';
+    lastView = 'main';
+    showView('main');
+    setMode(location.hash === '#coffee' ? 'coffee' : 'snacks');
+    if (state.name && firstTime) loadSummary();
+  }
+}
+
+async function init() {
+  if (!API_URL || API_URL.startsWith('PASTE_')) {
+    showError('Setup is not finished: paste your Apps Script web app URL into API_URL in index.html.');
+    return;
+  }
+  showView('loading');
+  try {
+    const cfg = await api({ action: 'config' });
+    state.snacks = cfg.snacks;
+    state.people = cfg.people;
+    state.currency = cfg.currency || 'EUR';
+    state.coffeePrice = Number(cfg.coffeePrice) || 0;
+    const nf = new Intl.NumberFormat(undefined, { style: 'currency', currency: state.currency });
+    money = n => nf.format(n);
+    renderPeople();
+    if ($('who').value) {
+      state.name = $('who').value;
+      $('snack-area').hidden = false;
+      renderSnacks();
+      renderCoffee();
+    }
+    window.addEventListener('hashchange', route);
+    route();
+  } catch (e) {
+    showError('Could not load snacks. ' + e.message);
+  }
+}
+
+$('retry').addEventListener('click', init);
+init();
+</script>
+</body>
+</html>
